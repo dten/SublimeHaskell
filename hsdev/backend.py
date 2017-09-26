@@ -110,6 +110,26 @@ class HsDevBackend(Backend.HaskellBackend):
         else:
             return filename
 
+    def unfixed_filename(self, filename):
+        if self.local_base_dir and self.remote_base_dir and filename:
+            f = filename.replace(self.remote_base_dir, self.local_base_dir)
+            if f != filename:
+                f = f.replace("/", "\\")
+            return f
+        else:
+            return filename
+
+    def parse_declarations(self, resp):
+        rs = ResultParse.parse_declarations(resp)
+        for r in rs:
+            if r.defined is not None:
+                if hasattr(r.defined.location, "filename"):
+                    r.defined.location.filename = self.unfixed_filename(r.defined.location.filename)
+            if r.module is not None:
+                if hasattr(r.module.location, "filename"):
+                    r.module.location.filename = self.unfixed_filename(r.module.location.filename)
+        return rs
+
     def start_backend(self):
         retval = True
         if self.is_local_hsdev:
@@ -493,7 +513,7 @@ class HsDevBackend(Backend.HaskellBackend):
         return self.list_command('lookup', {'name': name, 'file': self.fixed_filename(file)}, ResultParse.parse_decls, **backend_args)
 
     def whois(self, name, file, **backend_args):
-        return self.list_command('whois', {'name': name, 'file': self.fixed_filename(file)}, ResultParse.parse_declarations, **backend_args)
+        return self.list_command('whois', {'name': name, 'file': self.fixed_filename(file)}, self.parse_declarations, **backend_args)
 
     def scope_modules(self, _projcname, file, lookup='', search_type='prefix', **backend_args):
         return self.list_command('scope modules', {'query': {'input': lookup, 'type': search_type}, 'file': self.fixed_filename(file)},
@@ -510,7 +530,7 @@ class HsDevBackend(Backend.HaskellBackend):
 
     def complete(self, lookup, file, wide=False, **backend_args):
         return self.list_command('complete', {'prefix': lookup, 'wide': wide, 'file': self.fixed_filename(file)},
-                                 ResultParse.parse_declarations, **backend_args)
+                                 self.parse_declarations, **backend_args)
 
     def hayoo(self, query, page=None, pages=None, **backend_args):
         return self.list_command('hayoo', {'query': query, 'page': page or 0, 'pages': pages or 1},
