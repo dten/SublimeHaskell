@@ -176,11 +176,8 @@ class SublimeHaskellHoverPopup(object):
                 popup_parts.append(decl.popup(popup_msg))
 
             popup_text = u''.join(popup_parts)
-            if not self.view.is_popup_visible():
-                self.view.show_popup(popup_text, sublime.HIDE_ON_MOUSE_MOVE_AWAY, self.point, 600, 600,
-                                     self.on_navigate, self.on_hide)
-            else:
-                self.view.update_popup(popup_text)
+            self.view.show_popup(popup_text, sublime.HIDE_ON_MOUSE_MOVE_AWAY, self.point, 600, 600,
+                                 self.on_navigate, self.on_hide)
 
 
     def get_type(self, type_list, qual_name):
