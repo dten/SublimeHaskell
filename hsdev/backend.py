@@ -505,8 +505,8 @@ class HsDevBackend(Backend.HaskellBackend):
                                             'type': search_type
                                            },
                                   'global': global_scope,
-                                  'file': file
-                                 }, ResultParse.parse_declarations, **backend_args)
+                                  'file': self.fixed_filename(file)
+                                 }, self.parse_declarations, **backend_args)
 
     def complete(self, lookup, file, wide=False, **backend_args):
         return self.list_command('complete', {'prefix': lookup, 'wide': wide, 'file': self.fixed_filename(file)},
