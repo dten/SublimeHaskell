@@ -924,7 +924,7 @@ class AutoFixState(object):
         self.redo_history = redo_history[:] if redo_history is not None else []
 
     def is_active(self):
-        return self.view and self.corrections
+        return self.view is not None and len(self.corrections) != 0
 
     def set(self, view, corrections, selected=0, undo_history=None, redo_history=None):
         if self.is_active():
