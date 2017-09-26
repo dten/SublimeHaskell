@@ -43,7 +43,7 @@ class HsDevBackend(Backend.HaskellBackend):
     HSDEV_MAX_VER = [0, 3, 0, 0]  # maximum hsdev version
     HSDEV_CALL_TIMEOUT = 300.0 # second timeout for synchronous requests (5 minutes should be enough, no?)
 
-    def __init__(self, backend_mgr, local=True, port=HSDEV_DEFAULT_PORT, host=HSDEV_DEFAULT_HOST, **kwargs):
+    def __init__(self, backend_mgr, local=True, port=HSDEV_DEFAULT_PORT, host=HSDEV_DEFAULT_HOST, local_base_dir=None, remote_base_dir=None, **kwargs):
         super().__init__(backend_mgr)
         Logging.log('{0}.__init__({1}, {2})'.format(type(self).__name__, host, port), Logging.LOG_INFO)
 
@@ -77,6 +77,8 @@ class HsDevBackend(Backend.HaskellBackend):
         # Connection params
         self.port = port
         self.hostname = host
+        self.local_base_dir = local_base_dir
+        self.remote_base_dir = remote_base_dir
         if self.is_local_hsdev:
             self.hostname = self.HSDEV_DEFAULT_HOST
         self.client = None
