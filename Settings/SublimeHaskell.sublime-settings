@@ -195,10 +195,10 @@
     // ~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=
 
     // lint & check on the fly
-    "lint_check_fly": false,
+    "lint_check_fly": true,
 
     // idle time in seconds before lint & check on the fly
-    "lint_check_fly_idle": 5,
+    "lint_check_fly_idle": 2,
 
     // Use unicode symbols info 'symbol info panel'
     "unicode_symbol_info": true,
@@ -226,7 +226,7 @@
     // ~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=~=
 
     // Log level, 0 — no log, 1 — errors, 2 — warnings, 3 — info messages, 4 — debug, 5 — trace
-    "log": 1,
+    "log": 5,
 
     // hsdev logging output:
     //
@@ -237,8 +237,8 @@
     //
     // hsdev version 0.2.3.0 and higher: The "hsdev_log_level" preference controls hsdev's logging. Valid values are
     // 'trace', 'debug', 'info', 'warning', 'error' and 'fatal'.
-    "hsdev_log_config": "use silent",
-    "hsdev_log_level": "warning",
+    "hsdev_log_config": "informational",
+    "hsdev_log_level": "trace",
 
     // Backend debugging flags/tokens: This is a list of tokens used for backend debugging, primarily in the hsdev
     // backend.
