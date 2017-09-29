@@ -116,8 +116,8 @@ class HsDevBackend(Backend.HaskellBackend):
                 return f.replace("/", "\\")
         return filename
 
-    def fix_result(self, resp):
-        for r in resp or []:
+    def fix_result(self, r):
+        if r is not None:
             if 'source' in r:
                 if 'file' in r['source']:
                     file = r['source']['file']
@@ -127,7 +127,13 @@ class HsDevBackend(Backend.HaskellBackend):
                     if 'file' in r['defined']['location']:
                         file = r['defined']['location']['file']
                         r['defined']['location']['file'] = self.unfixed_filename(file)
-        return resp
+        return r
+
+    def fix_results(self, results):
+        if results is not None:
+            for i in range(len(results)):
+                results[i] = self.fix_result(results[i])
+        return results
 
     def fix_dict(self, d):
         for k, v in d.items():
@@ -294,7 +300,7 @@ class HsDevBackend(Backend.HaskellBackend):
     def hsdev_command(self, name, opts, on_result, async=False, timeout=HSDEV_CALL_TIMEOUT, is_list=False,
                       on_response=None, on_notify=None, on_error=None, on_result_part=None, split_result=None):
 
-        if opts is not None:
+        if opts is not None and name != "autofix show":
             opts = self.fix_dict(opts)
 
         if split_result is None:
@@ -305,17 +311,20 @@ class HsDevBackend(Backend.HaskellBackend):
 
             def hsdev_command_notify(reply):
                 if 'result-part' in reply:
-                    notify_result = on_result(self.fix_result([reply['result-part']]))[0]
+                    notify_result = on_result(self.fix_results([reply['result-part']]))[0]
                     HsCallback.call_callback(on_result_part, notify_result)
                     result.append(notify_result)
                 else:
                     HsCallback.call_callback(on_notify, reply)
 
+            def process_response(resp):
+                on_response(self.fix_results(resp))
+
             # FIXME: Is this option still used?
             opts.update({'split-result': None})
             resp = self.client.call(name,
                                     opts,
-                                    on_response=on_response,
+                                    on_response= process_response if on_response else None,
                                     on_notify=hsdev_command_notify,
                                     on_error=on_error,
                                     wait=not async,
@@ -325,7 +334,7 @@ class HsDevBackend(Backend.HaskellBackend):
 
         else:
             def process_response(resp):
-                on_response(on_result(self.fix_result(resp)))
+                on_response(on_result(self.fix_results(resp)))
 
             resp = self.client.call(name,
                                     opts,
@@ -335,7 +344,7 @@ class HsDevBackend(Backend.HaskellBackend):
                                     wait=not async,
                                     timeout=timeout)
 
-            return on_result(self.fix_result(resp)) if not async else resp
+            return on_result(self.fix_results(resp)) if not async else resp
 
     def command(self, name, opts, on_result=result_identity, timeout=HSDEV_CALL_TIMEOUT, on_response=None,
                 on_notify=None, on_error=None, on_result_part=None, split_result=None):
