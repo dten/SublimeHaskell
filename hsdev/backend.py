@@ -32,7 +32,6 @@ def result_identity(resp):
     '''
     return resp
 
-
 class HsDevBackend(Backend.HaskellBackend):
     """This class encapsulates all of the functions that interact with the `hsdev` backend.
     """
@@ -114,21 +113,46 @@ class HsDevBackend(Backend.HaskellBackend):
         if self.local_base_dir and self.remote_base_dir and filename:
             f = filename.replace(self.remote_base_dir, self.local_base_dir)
             if f != filename:
-                f = f.replace("/", "\\")
-            return f
-        else:
-            return filename
+                return f.replace("/", "\\")
+        return filename
 
-    def parse_declarations(self, resp):
-        rs = ResultParse.parse_declarations(resp)
-        for r in rs:
-            if r.defined is not None:
-                if hasattr(r.defined.location, "filename"):
-                    r.defined.location.filename = self.unfixed_filename(r.defined.location.filename)
-            if r.module is not None:
-                if hasattr(r.module.location, "filename"):
-                    r.module.location.filename = self.unfixed_filename(r.module.location.filename)
-        return rs
+    def fix_result(self, resp):
+        for r in resp or []:
+            if 'source' in r:
+                if 'file' in r['source']:
+                    file = r['source']['file']
+                    r['source']['file'] = self.unfixed_filename(file)
+            elif 'defined' in r:
+                if 'location' in r['defined']:
+                    if 'file' in r['defined']['location']:
+                        file = r['defined']['location']['file']
+                        r['defined']['location']['file'] = self.unfixed_filename(file)
+        return resp
+
+    def fix_dict(self, d):
+        for k, v in d.items():
+            if v == None:
+                continue
+            if (isinstance(v, str)):
+                d[k] = self.fixed_filename(v)
+            elif (isinstance(v, dict)):
+                d[k] = self.fix_dict(v)
+            elif (isinstance(v, list)):
+                d[k] = self.fix_list(v)
+        return d
+
+    def fix_list(self, a):
+        for i in range(len(a)):
+            v = a[i]
+            if v == None:
+                continue
+            if (isinstance(v, str)):
+                a[i] = self.fixed_filename(v)
+            elif (isinstance(v, dict)):
+                a[i] = self.fix_dict(v)
+            elif (isinstance(v, list)):
+                a[i] = self.fix_array(v)
+        return a
 
     def start_backend(self):
         retval = True
@@ -262,13 +286,17 @@ class HsDevBackend(Backend.HaskellBackend):
         return reduce(inner_concat, args, (True, []))[1]
 
     def files_and_contents(self, files, contents):
-        retval = [{'file': self.fixed_filename(f), 'contents': None} for f in files] if files is not None else []
-        retval.extend([{'file': self.fixed_filename(f), 'contents': cts} for f, cts in contents.items()] if contents is not None else [])
+        retval = [{'file': f, 'contents': None} for f in files] if files is not None else []
+        retval.extend([{'file': f, 'contents': cts} for f, cts in contents.items()] if contents is not None else [])
         return  retval
 
 
     def hsdev_command(self, name, opts, on_result, async=False, timeout=HSDEV_CALL_TIMEOUT, is_list=False,
                       on_response=None, on_notify=None, on_error=None, on_result_part=None, split_result=None):
+
+        if opts is not None:
+            opts = self.fix_dict(opts)
+
         if split_result is None:
             split_res = on_result_part is not None
 
@@ -277,7 +305,7 @@ class HsDevBackend(Backend.HaskellBackend):
 
             def hsdev_command_notify(reply):
                 if 'result-part' in reply:
-                    notify_result = on_result([reply['result-part']])[0]
+                    notify_result = on_result(self.fix_result([reply['result-part']]))[0]
                     HsCallback.call_callback(on_result_part, notify_result)
                     result.append(notify_result)
                 else:
@@ -297,7 +325,7 @@ class HsDevBackend(Backend.HaskellBackend):
 
         else:
             def process_response(resp):
-                on_response(on_result(resp))
+                on_response(on_result(self.fix_result(resp)))
 
             resp = self.client.call(name,
                                     opts,
@@ -307,7 +335,7 @@ class HsDevBackend(Backend.HaskellBackend):
                                     wait=not async,
                                     timeout=timeout)
 
-            return on_result(resp) if not async else resp
+            return on_result(self.fix_result(resp)) if not async else resp
 
     def command(self, name, opts, on_result=result_identity, timeout=HSDEV_CALL_TIMEOUT, on_response=None,
                 on_notify=None, on_error=None, on_result_part=None, split_result=None):
@@ -377,33 +405,33 @@ class HsDevBackend(Backend.HaskellBackend):
     def scan(self, cabal=False, sandboxes=None, projects=None, files=None, paths=None, ghc=None, contents=None,
              docs=False, infer=False, wait_complete=False, **backend_args):
         action = self.command if wait_complete else self.async_command
-        return action('scan', {'projects': [self.fixed_filename(f) for f in projects or []],
+        return action('scan', {'projects': projects or [],
                                'cabal': cabal,
-                               'sandboxes': [self.fixed_filename(f) for f in sandboxes or []],
+                               'sandboxes': sandboxes or [],
                                'files': self.files_and_contents(files, contents),
-                               'paths': [self.fixed_filename(f) for f in paths or []],
-                               'ghc-opts': [self.fixed_filename(f) for f in ghc or []],
+                               'paths': paths or [],
+                               'ghc-opts': ghc or [],
                                'docs': docs,
                                'infer': infer},
                       **backend_args)
 
     def docs(self, projects=None, files=None, modules=None, **backend_args):
-        return self.async_command('docs', {'projects': [self.fixed_filename(f) for f in projects or []],
-                                           'files': [self.fixed_filename(f) for f in files or []],
+        return self.async_command('docs', {'projects': projects or [],
+                                           'files': files or [],
                                            'modules': modules or []},
                                   **backend_args)
 
     def infer(self, projects=None, files=None, modules=None, **backend_args):
-        return self.async_command('infer', {'projects': [self.fixed_filename(f) for f in projects or []],
-                                            'files': [self.fixed_filename(f) for f in files or []],
+        return self.async_command('infer', {'projects': projects or [],
+                                            'files': files or [],
                                             'modules': modules or []},
                                   **backend_args)
 
     def remove(self, cabal=False, sandboxes=None, projects=None, files=None, packages=None, **backend_args):
-        return self.async_list_command('remove', {'projects': [self.fixed_filename(f) for f in projects or []],
+        return self.async_list_command('remove', {'projects': projects or [],
                                                   'cabal': cabal,
-                                                  'sandboxes': [self.fixed_filename(f) for f in sandboxes or []],
-                                                  'files': [self.fixed_filename(f) for f in files or []],
+                                                  'sandboxes': sandboxes or [],
+                                                  'files': files or [],
                                                   'packages': packages or []},
                                        **backend_args)
 
@@ -414,11 +442,11 @@ class HsDevBackend(Backend.HaskellBackend):
                      source=False, standalone=False, **backend_args):
         filters = []
         if project:
-            filters.append({'project': self.fixed_filename(project)})
+            filters.append({'project': project})
         if file:
-            filters.append({'file': self.fixed_filename(file)})
+            filters.append({'file': file})
         if module:
-            filters.append({'module': self.fixed_filename(module)})
+            filters.append({'module': module})
         if deps:
             filters.append({'deps': deps})
         if sandbox:
@@ -449,11 +477,11 @@ class HsDevBackend(Backend.HaskellBackend):
 
         filters = []
         if project:
-            filters.append({'project': self.fixed_filename(project)})
+            filters.append({'project': project})
         if file:
-            filters.append({'file': self.fixed_filename(file)})
+            filters.append({'file': file})
         if module:
-            filters.append({'module': self.fixed_filename(module)})
+            filters.append({'module': module})
         if deps:
             filters.append({'deps': deps})
         if sandbox:
@@ -478,11 +506,11 @@ class HsDevBackend(Backend.HaskellBackend):
 
         filters = []
         if project:
-            filters.append({'project': self.fixed_filename(project)})
+            filters.append({'project': project})
         if file:
-            filters.append({'file': self.fixed_filename(file)})
+            filters.append({'file': file})
         if module:
-            filters.append({'module': self.fixed_filename(module)})
+            filters.append({'module': module})
         if deps:
             filters.append({'deps': deps})
         if sandbox:
@@ -501,22 +529,22 @@ class HsDevBackend(Backend.HaskellBackend):
         return self.command('module', {'query': query, 'filters': filters}, ResultParse.parse_modules, **backend_args)
 
     def resolve(self, file, exports=False, **backend_args):
-        return self.command('resolve', {'file': self.fixed_filename(file), 'exports': exports}, ResultParse.parse_module, **backend_args)
+        return self.command('resolve', {'file': file, 'exports': exports}, ResultParse.parse_module, **backend_args)
 
     def project(self, project=None, path=None, **backend_args):
-        return self.command('project', {'name': self.fixed_filename(project)} if project else {'path': path}, **backend_args)
+        return self.command('project', {'name': project} if project else {'path': path}, **backend_args)
 
     def sandbox(self, path, **backend_args):
-        return self.command('sandbox', {'path': self.fixed_filename(path)}, **backend_args)
+        return self.command('sandbox', {'path': path}, **backend_args)
 
     def lookup(self, name, file, **backend_args):
-        return self.list_command('lookup', {'name': name, 'file': self.fixed_filename(file)}, ResultParse.parse_decls, **backend_args)
+        return self.list_command('lookup', {'name': name, 'file': file}, ResultParse.parse_decls, **backend_args)
 
     def whois(self, name, file, **backend_args):
-        return self.list_command('whois', {'name': name, 'file': self.fixed_filename(file)}, self.parse_declarations, **backend_args)
+        return self.list_command('whois', {'name': name, 'file': file}, ResultParse.parse_declarations, **backend_args)
 
     def scope_modules(self, _projcname, file, lookup='', search_type='prefix', **backend_args):
-        return self.list_command('scope modules', {'query': {'input': lookup, 'type': search_type}, 'file': self.fixed_filename(file)},
+        return self.list_command('scope modules', {'query': {'input': lookup, 'type': search_type}, 'file': file},
                                  ResultParse.parse_modules_brief, **backend_args)
 
     def scope(self, file, lookup='', search_type='prefix', global_scope=False, **backend_args):
@@ -525,12 +553,12 @@ class HsDevBackend(Backend.HaskellBackend):
                                             'type': search_type
                                            },
                                   'global': global_scope,
-                                  'file': self.fixed_filename(file)
-                                 }, self.parse_declarations, **backend_args)
+                                  'file': file
+                                 }, ResultParse.parse_declarations, **backend_args)
 
     def complete(self, lookup, file, wide=False, **backend_args):
-        return self.list_command('complete', {'prefix': lookup, 'wide': wide, 'file': self.fixed_filename(file)},
-                                 self.parse_declarations, **backend_args)
+        return self.list_command('complete', {'prefix': lookup, 'wide': wide, 'file': file},
+                                 ResultParse.parse_declarations, **backend_args)
 
     def hayoo(self, query, page=None, pages=None, **backend_args):
         return self.list_command('hayoo', {'query': query, 'page': page or 0, 'pages': pages or 1},
@@ -551,20 +579,20 @@ class HsDevBackend(Backend.HaskellBackend):
     def check(self, files=None, contents=None, ghc=None, wait_complete=False, **backend_args):
         action = self.list_command if wait_complete else self.async_list_command
         return action('check', {'files': self.files_and_contents(files, contents),
-                                'ghc-opts': [self.fixed_filename(f) for f in ghc or []]},
+                                'ghc-opts': ghc or []},
                       **backend_args)
 
     def check_lint(self, files=None, contents=None, ghc=None, hlint=None, wait_complete=False, **backend_args):
         action = self.list_command if wait_complete else self.async_list_command
         backend_args = self.convert_warnings(backend_args)
         return action('check-lint', {'files': self.files_and_contents(files, contents),
-                                     'ghc-opts': [self.fixed_filename(f) for f in ghc or []],
+                                     'ghc-opts': ghc or [],
                                      'hlint-opts': hlint or []},
                       **backend_args)
 
     def types(self, _projectname, file, _modulename, _line, _column, ghc_flags=None, contents=None, **backend_args):
         return self.list_command('types', {'files': self.files_and_contents(file, contents),
-                                           'ghc-opts': [self.fixed_filename(f) for f in ghc_flags or []]},
+                                           'ghc-opts': ghc_flags or []},
                                  **backend_args)
 
     def langs(self, _projectname, **backend_args):
@@ -584,7 +612,7 @@ class HsDevBackend(Backend.HaskellBackend):
     def ghc_eval(self, exprs, file=None, source=None, **backend_args):
         the_file = None
         if file is not None:
-            the_file = {'file': self.fixed_filename(the_file), 'contents': source}
+            the_file = {'file': the_file, 'contents': source}
         return self.list_command('ghc eval', {'exprs': exprs, 'file': the_file}, **backend_args)
 
     def exit(self):
